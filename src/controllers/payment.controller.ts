@@ -8,12 +8,6 @@ import { env } from "../env.js";
 
 const defaultBalance = parseInt(env.USER_BALANCE);
 
-const getIdempotencyKey = (req: Request): string | undefined => {
-  const header = req.headers["Idempotency-Key"];
-  if (Array.isArray(header)) return header[0];
-  return header;
-};
-
 export const processPayment = catchAsync(
   async (req: Request, res: Response) => {
     const user = req.user;
@@ -24,7 +18,9 @@ export const processPayment = catchAsync(
 
     const input = req.body;
     const result = processPaymentSchema.safeParse(input);
-    const idempotencyKey = getIdempotencyKey(req);
+    const idempotencyKey = Array.isArray(req.headers["idempotency-key"])
+      ? req.headers["idempotency-key"][0]
+      : req.headers["idempotency-key"];
 
     if (!result.success) {
       throw new AppError("Bad request!", 400, "BAD_REQUEST");

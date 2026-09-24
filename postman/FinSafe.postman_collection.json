@@ -1,0 +1,199 @@
+{
+  "info": {
+    "_postman_id": "finsafe-api-collection",
+    "name": "FinSafe API",
+    "description": "FinSafe is a Node.js / Express / Prisma 7 (PostgreSQL via Neon adapter) transaction API. Auth is JWT (access + rotating refresh token) issued via jose and persisted in httpOnly cookies. Process-payment is idempotent via an Idempotency-Key header.\n\nImport this collection, set the collection variable `baseUrl` (default http://localhost:3000), then either run the requests in order (Register -> Login -> Process Payment) or use the `{{accessToken}}` variable that the Register/Login tests populate automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        },
+        "description": "Liveness probe. Returns service name and server date."
+      },
+      "response": []
+    },
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"password123\",\n  \"confirmPassword\": \"password123\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "register"]
+        },
+        "description": "Create an account. Returns accessToken/refreshToken (also set as httpOnly cookies) and the created user. Users start with a balance of 1000 (USER_BALANCE)."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
+              "pm.test('Register succeeds', () => { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 409) {",
+              "  pm.test('Account already exists', () => { pm.expect(json.status).to.eql('error'); });",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"password123\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "login"]
+        },
+        "description": "Log in with email + password. Returns fresh tokens and stores them in httpOnly cookies."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
+              "pm.test('Login succeeds', () => { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Refresh Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"<refresh token from Login response>\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/refresh",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "refresh"]
+        },
+        "description": "Exchange a valid refresh token for a new access token. The refresh token is rotated on every use (hashed before it is stored) and its 7-day window is extended."
+      },
+      "response": []
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/logout",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "logout"]
+        },
+        "description": "Clears the stored refresh token for the authenticated user and clears the httpOnly cookies. Send `Authorization: Bearer <accessToken>` if your current session is not cookie-authenticated."
+      },
+      "response": []
+    },
+    {
+      "name": "Process Payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 250,\n  \"currency\": \"GHS\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/transaction/process-payment",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "transaction", "process-payment"]
+        },
+        "description": "Charge the authenticated user.\n\nFlow: authenticate -> validate body -> idempotency check (same key + same body returns the cached response with X-Cache-Hit: true; same key + different body returns 409) -> balance check (returns 400 if the user cannot cover the amount) -> create Payment record -> debit the user's balance.\n\nNote: `{{$guid}}` generates a fresh key on every run. Re-sending the exact same key with the same body returns the cached success instead of charging twice."
+      },
+      "response": []
+    }
+  ]
+}

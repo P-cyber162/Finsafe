@@ -4,12 +4,6 @@ import { prisma } from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import type { ProcessPaymentInput } from "../schema/payment.schema.js";
 
-const getIdempotencyKey = (headers: import("http").IncomingHttpHeaders): string | undefined => {
-  const header = headers["Idempotency-Key"];
-  if (Array.isArray(header)) return header[0];
-  return header;
-};
-
 export const idempotencyCheck = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -22,7 +16,9 @@ export const idempotencyCheck = async (
     throw new AppError("Unauthorized user", 401, "UNAUTHORIZED");
   }
 
-  const idempotencyKey = getIdempotencyKey(req.headers);
+  const idempotencyKey = Array.isArray(req.headers["idempotency-key"])
+    ? req.headers["idempotency-key"][0]
+    : req.headers["idempotency-key"];
 
   if (!idempotencyKey) {
     return res.status(400).json({
@@ -33,13 +29,15 @@ export const idempotencyCheck = async (
   }
 
   // User Story 2: The Duplicate Attempt (Idempotency Logic)
-  const existingPayment = await prisma.payment.findUnique({
+  // A cached success is only returned when the key AND the request body match.
+  const existingPayment = await prisma.payment.findFirst({
     where: {
-      email_idempotencyKey: {
-        email: user.email,
-        idempotencyKey,
-      },
+      email: user.email,
+      idempotencyKey,
+      amount: payload.amount,
+      currency: payload.currency,
     },
+    orderBy: { createdAt: "desc" },
   });
 
   if (existingPayment) {
@@ -51,17 +49,15 @@ export const idempotencyCheck = async (
   }
 
   // User Story 3: Different Request, Same Key (Fraud/Error Check)
-  const keyOwner = await prisma.payment.findUnique({
+  const keyHolder = await prisma.payment.findFirst({
     where: {
+      email: user.email,
       idempotencyKey,
     },
+    orderBy: { createdAt: "desc" },
   });
 
-  if (
-    keyOwner &&
-    (keyOwner.amount !== payload.amount ||
-      keyOwner.currency !== payload.currency)
-  ) {
+  if (keyHolder) {
     return res.status(409).json({
       status: "fail",
       message: "Idempotency key already used for a different request body!",
