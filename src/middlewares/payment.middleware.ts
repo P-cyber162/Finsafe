@@ -1,12 +1,14 @@
 import type { Request, Response, NextFunction } from "express";
-import type { AuthenticatedRequest } from "./auth.middleware";
-import { prisma } from "../config/prisma";
-import { AppError } from "../utils/AppError";
+import type { AuthenticatedRequest } from "./auth.middleware.js";
+import { prisma } from "../config/prisma.js";
+import { AppError } from "../utils/AppError.js";
+import type { ProcessPaymentInput } from "../schema/payment.schema.js";
 
-interface Payload {
-  amount: number;
-  currency: string;
-}
+const getIdempotencyKey = (headers: import("http").IncomingHttpHeaders): string | undefined => {
+  const header = headers["Idempotency-Key"];
+  if (Array.isArray(header)) return header[0];
+  return header;
+};
 
 export const idempotencyCheck = async (
   req: AuthenticatedRequest,
@@ -14,13 +16,13 @@ export const idempotencyCheck = async (
   next: NextFunction,
 ) => {
   const user = req.user;
-  const payload: Payload = req.body;
+  const payload: ProcessPaymentInput = req.body;
 
   if (!user) {
     throw new AppError("Unauthorized user", 401, "UNAUTHORIZED");
   }
 
-  const idempotencyKey = req.headers["Idempotency-Key"];
+  const idempotencyKey = getIdempotencyKey(req.headers);
 
   if (!idempotencyKey) {
     return res.status(400).json({
@@ -31,36 +33,34 @@ export const idempotencyCheck = async (
   }
 
   // User Story 2: The Duplicate Attempt (Idempotency Logic)
-  let payment;
-
-  payment = await prisma.payment.findUnique({
+  const existingPayment = await prisma.payment.findUnique({
     where: {
-      email: user.email,
-      idempotencyKey: idempotencyKey,
-      amount: payload?.amount,
-      currency: payload?.currency,
+      email_idempotencyKey: {
+        email: user.email,
+        idempotencyKey,
+      },
     },
   });
 
-  if (payment) {
+  if (existingPayment) {
     res.set("X-Cache-Hit", "true");
     return res.status(201).json({
       status: "success",
-      message: `Charged ${payment.amount} ${payment.currency}`,
+      message: `Charged ${existingPayment.amount} ${existingPayment.currency}`,
     });
   }
 
   // User Story 3: Different Request, Same Key (Fraud/Error Check)
-  payment = await prisma.payment.findUnique({
+  const keyOwner = await prisma.payment.findUnique({
     where: {
-      idempotencyKey: idempotencyKey, // complete check for same key for diffreent request
+      idempotencyKey,
     },
   });
 
   if (
-    payment &&
-    payment.amount !== payload.amount &&
-    payment.currency !== payload.currency
+    keyOwner &&
+    (keyOwner.amount !== payload.amount ||
+      keyOwner.currency !== payload.currency)
   ) {
     return res.status(409).json({
       status: "fail",
@@ -86,7 +86,7 @@ export const balanceCheck = async (
   next: NextFunction,
 ) => {
   const user = req.user;
-  const payload: Payload = req.body;
+  const payload: ProcessPaymentInput = req.body;
 
   if (!user) {
     throw new AppError("Unauthorized user", 401, "UNAUTHORIZED");
@@ -95,14 +95,13 @@ export const balanceCheck = async (
   const balance = await prisma.user.findUnique({
     where: {
       id: user.id,
-      email: user.email,
     },
     select: {
       balance: true,
     },
   });
 
-  if (payload.amount >= balance) {
+  if (!balance || payload.amount >= balance.balance) {
     return res.status(400).json({
       status: "fail",
       message: "You do not have enough funds to perform this transaction!",

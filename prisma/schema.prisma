@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Currency {
+  GHS
+  USD
+  GBP
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  password           String?
+  balance            Int       @default(1000)
+  refreshToken       String?
+  refreshTokenExpires DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("Users")
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  email          String
+  idempotencyKey String   @unique
+  amount         Int
+  currency       Currency
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([email, idempotencyKey])
+  @@map("Payments")
+}

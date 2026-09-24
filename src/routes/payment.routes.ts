@@ -1,12 +1,12 @@
 import { Router, type RequestHandler } from "express";
-import { validateBody } from "../middlewares/validation.middleware";
-import { processPaymentSchema } from "../schema/payment.schema";
-import { processPayment } from "../controllers/payment.controller";
-import { authenticateToken } from "../middlewares/auth.middleware";
+import { validateBody } from "../middlewares/validation.middleware.js";
+import { processPaymentSchema } from "../schema/payment.schema.js";
+import { processPayment } from "../controllers/payment.controller.js";
+import { authenticateToken } from "../middlewares/auth.middleware.js";
 import {
   balanceCheck,
   idempotencyCheck,
-} from "../middlewares/payment.middleware";
+} from "../middlewares/payment.middleware.js";
 
 const router = Router();
 

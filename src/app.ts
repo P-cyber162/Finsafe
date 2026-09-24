@@ -97,10 +97,10 @@ app.use(WideLoggerMiddleware);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/transaction", paymentRoutes);
 
-app.all("/.*/", (req, _res, next) => {
+app.use((req, _res, next) => {
   next(
     new AppError(
-      `Can't find $${req.originalUrl} on server`,
+      `Can't find ${req.originalUrl} on server`,
       404,
       "PAGE_NOT_FOUND",
     ),

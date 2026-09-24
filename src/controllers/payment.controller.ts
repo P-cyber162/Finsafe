@@ -1,12 +1,18 @@
 import type { Request, Response } from "express";
-import { catchAsync } from "../utils/catchAsync";
-import { wideLoggger } from "../utils/wideLogger";
-import { AppError } from "../utils/AppError";
-import { prisma } from "../config/prisma";
-import { processPaymentSchema } from "../schema/payment.schema";
-import { env } from "../env";
+import { catchAsync } from "../utils/catchAsync.js";
+import { wideLoggger } from "../utils/wideLogger.js";
+import { AppError } from "../utils/AppError.js";
+import { prisma } from "../config/prisma.js";
+import { processPaymentSchema } from "../schema/payment.schema.js";
+import { env } from "../env.js";
 
-const userBalance = env.USER_BALANCE;
+const defaultBalance = parseInt(env.USER_BALANCE);
+
+const getIdempotencyKey = (req: Request): string | undefined => {
+  const header = req.headers["Idempotency-Key"];
+  if (Array.isArray(header)) return header[0];
+  return header;
+};
 
 export const processPayment = catchAsync(
   async (req: Request, res: Response) => {
@@ -18,48 +24,51 @@ export const processPayment = catchAsync(
 
     const input = req.body;
     const result = processPaymentSchema.safeParse(input);
-    const idempotencyKey = req.headers["Idempotency-Key"];
+    const idempotencyKey = getIdempotencyKey(req);
 
-    if (!result) {
+    if (!result.success) {
       throw new AppError("Bad request!", 400, "BAD_REQUEST");
+    }
+
+    if (!idempotencyKey) {
+      throw new AppError("Idempotency key missing!", 400, "MISSING_KEY");
     }
 
     const payload = result.data;
 
     // User Story 1: The First Transaction (Happy Path)
     const payment = await prisma.payment.create({
-      where: {
-        email: user.email,
-      },
       data: {
         email: user.email,
-        idempotencyKey: idempotencyKey,
-        amount: payload?.amount,
-        currency: payload?.currency,
+        idempotencyKey,
+        amount: payload.amount,
+        currency: payload.currency,
       },
     });
 
     const balance = await prisma.user.findUnique({
       where: {
         id: user.id,
-        email: user.email,
       },
       select: {
         balance: true,
       },
     });
 
-    const userBalance = balance?.balance - (payload?.amount ?? 0);
+    const newBalance = (balance?.balance ?? 0) - payload.amount;
 
     await prisma.user.update({
       where: {
         id: user.id,
-        email: user.email,
       },
       data: {
-        balance: userBalance,
+        balance: newBalance,
       },
     });
+
+    wideLoggger.addCtx("payment_id", payment.id);
+    wideLoggger.addCtx("charged_amount", payment.amount);
+    wideLoggger.addCtx("charged_currency", payment.currency);
 
     return res.status(201).json({
       status: "success",
@@ -78,15 +87,14 @@ export const resetBalance = catchAsync(async (req: Request, res: Response) => {
   await prisma.user.update({
     where: {
       id: user.id,
-      email: user.email,
     },
     data: {
-      balance: parseInt(userBalance),
+      balance: defaultBalance,
     },
   });
 
   return res.status(200).json({
     status: "success",
-    message: `Your balance has been reset to ${userBalance}`,
+    message: `Your balance has been reset to ${defaultBalance}`,
   });
 });

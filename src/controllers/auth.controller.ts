@@ -67,7 +67,7 @@ export const registerUser = catchAsync(async (req: Request, res: Response) => {
     },
     data: {
       refreshToken: hashedRefreshToken,
-      refreshTokenExpires: expireTime,
+      refreshTokenExpires: new Date(expireTime),
     },
   });
 
@@ -109,7 +109,7 @@ export const loginUser = catchAsync(async (req: Request, res: Response) => {
 
   const isMatch = await comparePasswords(
     payload.password,
-    existingUser.password,
+    existingUser.password ?? "",
   );
 
   if (!isMatch) {
