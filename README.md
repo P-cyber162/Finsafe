@@ -113,19 +113,19 @@ cp .env.example .env
 
 Edit `.env` and fill in real values. Required variables:
 
-| Variable                  | Example                              | Notes                                              |
-| ------------------------- | ------------------------------------ | -------------------------------------------------- |
-| `DATABASE_URL`            | `postgresql://user:pass@host:5432/finsafe` | Must start with `postgresql://`; PostgreSQL ≥ 15 |
-| `REDIS_URL`               | `redis://localhost:6379`             |                                                     |
-| `FRONTEND_URL`            | `https://localhost:5173`             | Must start with `https://`; used for CORS           |
-| `ACCESS_TOKEN_SECRET`     | `<32+ random chars>`                 | Min 32 chars                                        |
-| `REFRESH_TOKEN_SECRET`    | `<32+ random chars>`                 | Min 32 chars                                        |
-| `PORT`                    | `3000`                               | Default `3000`                                      |
-| `NODE_ENV`                | `dev`                                | `dev` \| `test` \| `prod`                           |
-| `ACCESS_TOKEN_EXPIRES_IN` | `15m`                                | jose duration format                                |
-| `REFRESH_TOKEN_EXPIRES_IN`| `7d`                                 | jose duration format                                |
-| `BCRYPT_ROUNDS`           | `12`                                 | 10–20                                                |
-| `USER_BALANCE`            | `1000`                               | Opening balance granted to new users                |
+| Variable                   | Example                                    | Notes                                            |
+| -------------------------- | ------------------------------------------ | ------------------------------------------------ |
+| `DATABASE_URL`             | `postgresql://user:pass@host:5432/finsafe` | Must start with `postgresql://`; PostgreSQL ≥ 15 |
+| `REDIS_URL`                | `redis://localhost:6379`                   |                                                  |
+| `FRONTEND_URL`             | `https://localhost:5173`                   | Must start with `https://`; used for CORS        |
+| `ACCESS_TOKEN_SECRET`      | `<32+ random chars>`                       | Min 32 chars                                     |
+| `REFRESH_TOKEN_SECRET`     | `<32+ random chars>`                       | Min 32 chars                                     |
+| `PORT`                     | `3000`                                     | Default `3000`                                   |
+| `NODE_ENV`                 | `dev`                                      | `dev` \| `test` \| `prod`                        |
+| `ACCESS_TOKEN_EXPIRES_IN`  | `15m`                                      | jose duration format                             |
+| `REFRESH_TOKEN_EXPIRES_IN` | `7d`                                       | jose duration format                             |
+| `BCRYPT_ROUNDS`            | `12`                                       | 10–20                                            |
+| `USER_BALANCE`             | `1000`                                     | Opening balance granted to new users             |
 
 ### 3. Create the database schema
 
@@ -163,17 +163,17 @@ curl http://localhost:3000/health
 
 ### Scripts
 
-| Command                 | Purpose                                        |
-| ----------------------- | ---------------------------------------------- |
-| `npm run dev`           | Watch-mode dev server via `tsx`                |
-| `npm run build`         | Compile TypeScript to `dist/`                  |
-| `npm start`             | Run compiled server                            |
-| `npm run typecheck`     | `tsc --noEmit`                                 |
-| `npm run p:mig`         | `prisma migrate dev` (create & apply migration)|
-| `npm run p:mig:prod`    | `prisma migrate deploy`                        |
-| `npm run p:push`        | `prisma db push`                               |
-| `npm run p:studio`      | Browse the database in Prisma Studio            |
-| `npm run p:gen`         | Regenerate the Prisma client                   |
+| Command              | Purpose                                         |
+| -------------------- | ----------------------------------------------- |
+| `npm run dev`        | Watch-mode dev server via `tsx`                 |
+| `npm run build`      | Compile TypeScript to `dist/`                   |
+| `npm start`          | Run compiled server                             |
+| `npm run typecheck`  | `tsc --noEmit`                                  |
+| `npm run p:mig`      | `prisma migrate dev` (create & apply migration) |
+| `npm run p:mig:prod` | `prisma migrate deploy`                         |
+| `npm run p:push`     | `prisma db push`                                |
+| `npm run p:studio`   | Browse the database in Prisma Studio            |
+| `npm run p:gen`      | Regenerate the Prisma client                    |
 
 ### Postman
 
@@ -206,7 +206,7 @@ Liveness probe.
 {
   "status": "OK",
   "service": "Transactional App Service",
-  "date": "2026-09-24T04:14:10.200Z"
+  "date": "2026-09-24T04:14:10.200Z",
 }
 ```
 
@@ -236,8 +236,8 @@ Creates a user (balance seeded with `USER_BALANCE`), hashes the password, issues
     "id": "6f6e…",
     "email": "alice@example.com",
     "createdAt": "…",
-    "updatedAt": "…"
-  }
+    "updatedAt": "…",
+  },
 }
 ```
 
@@ -274,8 +274,8 @@ Issues a fresh token pair. The refresh token is validated, must match (bcrypt) t
   "status": "success",
   "data": {
     "newAccessToken": "<jwt>",
-    "newRefreshToken": "<jwt>"
-  }
+    "newRefreshToken": "<jwt>",
+  },
 }
 ```
 
@@ -299,11 +299,11 @@ Charges the authenticated user's balance. Idempotent.
 
 **Headers**
 
-| Header            | Value                                            | Required |
-| ----------------- | ------------------------------------------------ | -------- |
-| `Authorization`   | `Bearer <accessToken>`                           | yes*     |
-| `Idempotency-Key` | any unique string (e.g. UUID per client action)  | yes      |
-| `Content-Type`    | `application/json`                               | yes      |
+| Header            | Value                                           | Required |
+| ----------------- | ----------------------------------------------- | -------- |
+| `Authorization`   | `Bearer <accessToken>`                          | yes\*    |
+| `Idempotency-Key` | any unique string (e.g. UUID per client action) | yes      |
+| `Content-Type`    | `application/json`                              | yes      |
 
 \* or use the `token` cookie.
 
@@ -312,7 +312,7 @@ Charges the authenticated user's balance. Idempotent.
 ```json
 {
   "amount": 250,
-  "currency": "GHS"   // GHS | USD | GBP
+  "currency": "GHS" // GHS | USD | GBP
 }
 ```
 
@@ -329,7 +329,7 @@ Charges the authenticated user's balance. Idempotent.
 // 409 Conflict
 {
   "status": "fail",
-  "message": "Idempotency key already used for a different request body!"
+  "message": "Idempotency key already used for a different request body!",
 }
 ```
 
@@ -339,7 +339,7 @@ Charges the authenticated user's balance. Idempotent.
 // 400 Bad Request
 {
   "status": "fail",
-  "message": "You do not have enough funds to perform this transaction!"
+  "message": "You do not have enough funds to perform this transaction!",
 }
 ```
 
@@ -450,4 +450,4 @@ If you are coming from the pre-downgrade commit, these are the changes that were
 3. `package.json`: removed `@prisma/orm-postgres`, `@prisma/cli-engine`; pinned `prisma` to `^7.10.0`; removed `contract:emit`.
 4. New-style `migrations/` folder removed; fresh migrations are created under `prisma/migrations/` via `npm run p:mig`.
 5. `src/prisma/` (contract + runtime client) removed; all queries use the generated client from `src/config/prisma.ts`.
-6. Express 5 incompatibilities fixed: the `app.all("/.*/", …)` catch-all 404 was replaced with a middleware-based 404, and relative imports were given `.js` extensions for ESM-compliant `dist` output.
+6. Express 5 incompatibilities fixed: the `app.all("/.*/", …)` catch-all 404 was replaced with a middleware-based 404, and relative imports were given `.js` extensions for ESM-compliant `dist`output.
