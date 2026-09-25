@@ -23,9 +23,9 @@ export const errorHandler = (
     });
   }
 
-  const prismaError = err as unknown as { code: string };
+  const prismaError = err as unknown as { code?: string };
 
-  if (prismaError.code.startsWith("P")) {
+  if (typeof prismaError.code === "string" && prismaError.code.startsWith("P")) {
     wideLoggger.add("err", {
       msg: err.message,
       stack: err.stack,
