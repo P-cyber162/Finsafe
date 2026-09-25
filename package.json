@@ -10,6 +10,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "postinstall": "prisma generate",
+    "prebuild": "prisma generate",
     "p:mig": "prisma migrate dev",
     "p:mig:prod": "prisma migrate deploy",
     "p:studio": "prisma studio",
