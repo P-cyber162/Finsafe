@@ -23,6 +23,29 @@ export const errorHandler = (
     });
   }
 
+  const bodyParserError = err as unknown as { type?: string };
+
+  if (
+    typeof bodyParserError.type === "string" &&
+    bodyParserError.type.startsWith("entity.")
+  ) {
+    wideLoggger.add("err", {
+      msg: err.message,
+      stack: err.stack,
+      code: "INVALID_REQUEST_BODY",
+    });
+
+    const isTooLarge = bodyParserError.type === "entity.too.large";
+
+    return res.status(400).json({
+      status: "error",
+      code: isTooLarge ? "PAYLOAD_TOO_LARGE" : "INVALID_JSON",
+      message: isTooLarge
+        ? "Request body is too large!"
+        : "Request body contains invalid JSON!",
+    });
+  }
+
   const prismaError = err as unknown as { code?: string };
 
   if (typeof prismaError.code === "string" && prismaError.code.startsWith("P")) {

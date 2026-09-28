@@ -2,16 +2,24 @@
   "info": {
     "_postman_id": "finsafe-api-collection",
     "name": "FinSafe API",
-    "description": "FinSafe is a Node.js / Express / Prisma 7 (PostgreSQL via Neon adapter) transaction API. Auth is JWT (access + rotating refresh token) issued via jose and persisted in httpOnly cookies. Process-payment is idempotent via an Idempotency-Key header.\n\nImport this collection, set the collection variable `baseUrl` (default http://localhost:3000), then either run the requests in order (Register -> Login -> Process Payment) or use the `{{accessToken}}` variable that the Register/Login tests populate automatically.",
+    "description": "FinSafe is a Node.js / Express / Prisma 7 (PostgreSQL via Neon adapter) transaction API, deployed at https://finsafe-production-ec39.up.railway.app.\n\nAuth is JWT (access + rotating refresh token) issued via jose and also set as httpOnly cookies. Process-payment is idempotent via an `Idempotency-Key` header.\n\n## How to run\n\nThe collection is wired end to end and safe to re-run:\n\n1. `baseUrl` already points at the Railway deployment - no setup needed.\n2. `Register` generates a fresh unique email in a pre-request script, so it never collides with an existing account.\n3. `Register` and `Login` store `accessToken` / `refreshToken` in collection variables automatically.\n4. Run in order: **Register -> Login -> Process Payment -> Refresh Token -> Logout**.\n\n`Logout` and `Process Payment` send `Authorization: Bearer {{accessToken}}`, so run `Register` or `Login` first or they will return `MISSING_TOKEN` (401).\n\n## Important\n\n- `Process Payment` needs an `Idempotency-Key` header, otherwise it returns `MISSING_KEY` (400).\n- `Process Payment` rejects `amount >= balance` with 400. New users start with a balance of 1000, and the sample request charges 50.\n- `Refresh Token` issues a new token pair on every call and the test script updates `{{refreshToken}}` for you.\n\n  **Known issue (unfixed):** a refresh does *not* currently invalidate the previous refresh token - replaying an old one still returns 200. Only `Logout` revokes the stored token. So a stale `{{refreshToken}}` keeps working until logout.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:3000"
+      "value": "https://finsafe-production-ec39.up.railway.app"
+    },
+    {
+      "key": "email",
+      "value": ""
     },
     {
       "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
       "value": ""
     }
   ],
@@ -26,12 +34,41 @@
           "host": ["{{baseUrl}}"],
           "path": ["health"]
         },
-        "description": "Liveness probe. Returns service name and server date."
+        "description": "Liveness probe. Returns 200 with service name and server date. The only route that does not go through the request logger."
       },
       "response": []
     },
     {
       "name": "Register",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const email = `postman.${Date.now()}@example.com`;",
+              "pm.collectionVariables.set('email', email);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Register succeeds', () => { pm.response.to.have.status(201); });",
+              "const json = pm.response.json();",
+              "pm.test('Account created', () => { pm.expect(json.status).to.eql('success'); });",
+              "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
+              "if (json.refreshToken) pm.collectionVariables.set('refreshToken', json.refreshToken);",
+              "pm.test('Response omits password hash', () => {",
+              "  pm.expect(json.user).to.not.have.property('password');",
+              "  pm.expect(json.user).to.not.have.property('refreshToken');",
+              "});"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "POST",
         "header": [
@@ -42,7 +79,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"password123\",\n  \"confirmPassword\": \"password123\"\n}",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"password123\",\n  \"confirmPassword\": \"password123\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -54,28 +91,30 @@
           "host": ["{{baseUrl}}"],
           "path": ["api", "v1", "auth", "register"]
         },
-        "description": "Create an account. Returns accessToken/refreshToken (also set as httpOnly cookies) and the created user. Users start with a balance of 1000 (USER_BALANCE)."
+        "description": "Create an account.\n\nA pre-request script generates a unique `{{email}}` so the request can be re-run without hitting the 409 conflict.\n\nReturns 201 with `accessToken` / `refreshToken` (also set as httpOnly cookies) and the created user. The `user` object only contains `id`, `email`, `createdAt`, `updatedAt` - never the password hash. New users start with a balance of 1000.\n\nErrors: 400 `VALIDATION_FAILED` (bad email, password under 8 chars, or `confirmPassword` mismatch), 409 `CONFLICT` (email taken)."
       },
-      "response": [],
+      "response": []
+    },
+    {
+      "name": "Login",
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
+              "pm.test('Login succeeds', () => { pm.response.to.have.status(200); });",
               "const json = pm.response.json();",
               "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
-              "pm.test('Register succeeds', () => { pm.response.to.have.status(201); });",
-              "if (pm.response.code === 409) {",
-              "  pm.test('Account already exists', () => { pm.expect(json.status).to.eql('error'); });",
-              "}"
+              "if (json.refreshToken) pm.collectionVariables.set('refreshToken', json.refreshToken);",
+              "pm.test('Response omits password hash', () => {",
+              "  pm.expect(json.user).to.not.have.property('password');",
+              "  pm.expect(json.user).to.not.have.property('refreshToken');",
+              "});"
             ]
           }
         }
-      ]
-    },
-    {
-      "name": "Login",
+      ],
       "request": {
         "method": "POST",
         "header": [
@@ -86,7 +125,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"password123\"\n}",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"password123\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -98,25 +137,28 @@
           "host": ["{{baseUrl}}"],
           "path": ["api", "v1", "auth", "login"]
         },
-        "description": "Log in with email + password. Returns fresh tokens and stores them in httpOnly cookies."
+        "description": "Log in with email + password. Reuses the `{{email}}` captured by `Register`, so run `Register` first.\n\nReturns 200 with fresh tokens plus a sanitized `user` object (`id`, `email`, `balance`, `createdAt`, `updatedAt`) - the password and refresh-token hashes are no longer included.\n\nErrors: 400 `BAD_REQUEST` (unknown email), 401 `UNAUTHORIZED` (wrong password)."
       },
-      "response": [],
+      "response": []
+    },
+    {
+      "name": "Refresh Token",
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
+              "pm.test('Refresh succeeds', () => { pm.response.to.have.status(200); });",
               "const json = pm.response.json();",
-              "if (json.accessToken) pm.collectionVariables.set('accessToken', json.accessToken);",
-              "pm.test('Login succeeds', () => { pm.response.to.have.status(200); });"
+              "if (json.data) {",
+              "  pm.collectionVariables.set('accessToken', json.data.newAccessToken);",
+              "  pm.collectionVariables.set('refreshToken', json.data.newRefreshToken);",
+              "}"
             ]
           }
         }
-      ]
-    },
-    {
-      "name": "Refresh Token",
+      ],
       "request": {
         "method": "POST",
         "header": [
@@ -127,7 +169,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"refreshToken\": \"<refresh token from Login response>\"\n}",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -139,26 +181,56 @@
           "host": ["{{baseUrl}}"],
           "path": ["api", "v1", "auth", "refresh"]
         },
-        "description": "Exchange a valid refresh token for a new access token. The refresh token is rotated on every use (hashed before it is stored) and its 7-day window is extended."
+        "description": "Exchange a valid refresh token for a new access token. Populated automatically by `Register` / `Login`.\n\nA new token pair is issued on every call and the 7-day window is extended, so an active user is not forced to re-login 7 days after their original login. The test script saves `newAccessToken` / `newRefreshToken` back into the collection variables.\n\n**Known issue (unfixed):** the previous refresh token is *not* invalidated by this call, so replaying an old token still succeeds. Only `Logout` revokes the stored token. The stored value is a bcrypt hash, so the raw token is never persisted.\n\nThe token is also read from the `refreshToken` httpOnly cookie if the body is omitted.\n\nErrors: 401 `MISSING_TOKEN` (no token in body or cookie), 401 `INVALID_TOKEN` (expired or malformed)."
       },
       "response": []
     },
     {
       "name": "Logout",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Logout succeeds', () => { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}",
+            "type": "text"
+          }
+        ],
         "url": {
           "raw": "{{baseUrl}}/api/v1/auth/logout",
           "host": ["{{baseUrl}}"],
           "path": ["api", "v1", "auth", "logout"]
         },
-        "description": "Clears the stored refresh token for the authenticated user and clears the httpOnly cookies. Send `Authorization: Bearer <accessToken>` if your current session is not cookie-authenticated."
+        "description": "Clears the stored refresh token for the authenticated user and clears both httpOnly cookies.\n\n**Requires authentication** - sends `Authorization: Bearer {{accessToken}}`, so run `Register` or `Login` first. The `token` httpOnly cookie is also accepted.\n\nErrors: 401 `MISSING_TOKEN` (no bearer token and no cookie)."
       },
       "response": []
     },
     {
       "name": "Process Payment",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Payment succeeds', () => { pm.response.to.have.status(201); });",
+              "const json = pm.response.json();",
+              "pm.test('Not an idempotent replay', () => { pm.expect(pm.response.headers.get('X-Cache-Hit')).to.eql(undefined); });"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "POST",
         "header": [
@@ -179,7 +251,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"amount\": 250,\n  \"currency\": \"GHS\"\n}",
+          "raw": "{\n  \"amount\": 50,\n  \"currency\": \"GHS\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -191,9 +263,211 @@
           "host": ["{{baseUrl}}"],
           "path": ["api", "v1", "transaction", "process-payment"]
         },
-        "description": "Charge the authenticated user.\n\nFlow: authenticate -> validate body -> idempotency check (same key + same body returns the cached response with X-Cache-Hit: true; same key + different body returns 409) -> balance check (returns 400 if the user cannot cover the amount) -> create Payment record -> debit the user's balance.\n\nNote: `{{$guid}}` generates a fresh key on every run. Re-sending the exact same key with the same body returns the cached success instead of charging twice."
+        "description": "Charge the authenticated user.\n\n**Required headers:** `Authorization: Bearer {{accessToken}}` and `Idempotency-Key`.\n\nFlow: authenticate -> validate body -> idempotency check -> balance check -> create Payment record -> debit the balance.\n\nIdempotency behaviour: re-sending the **same key with the same body** returns the cached 201 with `X-Cache-Hit: true` and does not charge twice. Re-sending the **same key with a different body** returns 409.\n\n`{{$guid}}` generates a fresh key each run, so this request always performs a real charge of 50. Users start at 1000 and the balance is permanently debited, so re-run `Register` if you exhaust it.\n\nErrors: 400 `MISSING_KEY` (no `Idempotency-Key`), 400 `VALIDATION_FAILED` (amount must be a positive number; currency must be GHS, USD or GBP), 400 insufficient funds, 401 `MISSING_TOKEN`."
       },
       "response": []
+    },
+    {
+      "name": "Error Cases",
+      "item": [
+        {
+          "name": "Wrong Method - GET on POST-only route (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "**This is the request that returns `PAGE_NOT_FOUND`.**\n\n`/api/v1/auth/register` only accepts POST. Express matches on method *and* path, so a GET falls through to the 404 handler and returns `PAGE_NOT_FOUND` with `Can't find /api/v1/auth/register on server` - even though the route exists and works over POST. This is expected behaviour, not a server misconfiguration."
+          },
+          "response": []
+        },
+        {
+          "name": "Malformed JSON Body (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"email\": \"broken@example.com\", ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Sends truncated JSON with a JSON content type. Returns 400 `INVALID_JSON` ('Request body contains invalid JSON!') instead of a generic 500.\n\nA body over the 100 kb limit returns 400 `PAYLOAD_TOO_LARGE`."
+          },
+          "response": []
+        },
+        {
+          "name": "Validation Failure (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"password123\",\n  \"confirmPassword\": \"different123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Mismatched passwords. Returns 400 `VALIDATION_FAILED` with a `details` array naming the offending field."
+          },
+          "response": []
+        },
+        {
+          "name": "Protected Route Without Token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "logout"]
+            },
+            "description": "No bearer token and no cookie. Returns 401 `MISSING_TOKEN`."
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid Refresh Token (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"not-a-real-token\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            },
+            "description": "A malformed refresh token returns 401 `INVALID_TOKEN` ('Invalid or expired refresh token!') rather than a 500.\n\nNote: this is about the token being *malformed*, not stale. A well-formed but already-used refresh token still returns 200 - see the `Refresh Token` request for that known issue."
+          },
+          "response": []
+        },
+        {
+          "name": "Payment Missing Idempotency Key (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50,\n  \"currency\": \"GHS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transaction/process-payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "transaction", "process-payment"]
+            },
+            "description": "Authenticated, but no `Idempotency-Key` header. Returns 400 `MISSING_KEY`."
+          },
+          "response": []
+        },
+        {
+          "name": "Payment Insufficient Funds (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 999999,\n  \"currency\": \"GHS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/transaction/process-payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "transaction", "process-payment"]
+            },
+            "description": "Amount far above the balance. The balance check rejects it with 400 'You do not have enough funds to perform this transaction!' and no Payment record is created.\n\nNote the check is `amount >= balance`, so a payment equal to the remaining balance is also rejected."
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown Path (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "does-not-exist"]
+            },
+            "description": "Genuinely unrouted path. Returns 404 `PAGE_NOT_FOUND`."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

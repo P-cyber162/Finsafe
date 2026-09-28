@@ -148,7 +148,13 @@ export const loginUser = catchAsync(async (req: Request, res: Response) => {
     message: "User logged in succesfully!",
     accessToken,
     refreshToken,
-    user: existingUser,
+    user: {
+      id: existingUser.id,
+      email: existingUser.email,
+      balance: existingUser.balance,
+      createdAt: existingUser.createdAt,
+      updatedAt: existingUser.updatedAt,
+    },
   });
 });
 
@@ -188,7 +194,14 @@ export const refreshToken = catchAsync(async (req: Request, res: Response) => {
     throw new AppError("Refresh token required!", 401, "MISSING_TOKEN");
   }
 
-  const payload = await verifyRefreshToken(refreshToken);
+  const payload = await verifyRefreshToken(refreshToken).catch(() => {
+    wideLoggger.addCtx("refresh_token_result", "invalid_token");
+    throw new AppError(
+      "Invalid or expired refresh token!",
+      401,
+      "INVALID_TOKEN",
+    );
+  });
 
   const user = await prisma.user.findUnique({
     where: {
