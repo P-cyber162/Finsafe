@@ -41,7 +41,7 @@ export const idempotencyCheck = async (
   });
 
   if (existingPayment) {
-    res.set("X-Cache-Hit", "true");
+    res.setHeader("X-Cache-Hit", "true");
     return res.status(201).json({
       status: "success",
       message: `Charged ${existingPayment.amount} ${existingPayment.currency}`,
