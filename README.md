@@ -450,4 +450,4 @@ If you are coming from the pre-downgrade commit, these are the changes that were
 3. `package.json`: removed `@prisma/orm-postgres`, `@prisma/cli-engine`; pinned `prisma` to `^7.10.0`; removed `contract:emit`.
 4. New-style `migrations/` folder removed; fresh migrations are created under `prisma/migrations/` via `npm run p:mig`.
 5. `src/prisma/` (contract + runtime client) removed; all queries use the generated client from `src/config/prisma.ts`.
-6. Express 5 incompatibilities fixed: the `app.all("/.*/", …)` catch-all 404 was replaced with a middleware-based 404, and relative imports were given `.js` extensions for ESM-compliant `dist`output.
+6. Express 5 incompatibilities fixed: the `app.all("/.*/", …)` catch-all 404 was replaced with a middleware-based 404, and relative imports were given `.js` extensions for ESM-compliant `dist`output
